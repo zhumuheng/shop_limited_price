@@ -1,0 +1,56 @@
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+
+path = 'E:/Desktop/门店24年6月品牌件销售价格及成本'
+list_excel = os.listdir(path)
+list_excel = [x for x in list_excel if x.startswith('多维分析')]
+df = pd.DataFrame()
+for l in list_excel:
+    path_excel = os.path.join(path, l)
+    sheets = pd.read_csv(path_excel, sep=',', header=0)
+    df = pd.concat([df, sheets])
+
+df.rename(columns={'成本-含税': 'cost', '购买数量': 'buy_num', '券后金额-含税': 'sell_price'}, inplace=True)
+df['cost_one'] = df['cost'] / df['buy_num']  # 件均成本
+df['sell_price_one'] = df['sell_price'] / df['buy_num']  # 件均售价
+df['height_sell_price1'] = np.exp(1.75) * df['cost_one'] ** 0.832  # 最高限价
+df['height_markup_rate'] = df['height_sell_price1'] / df['cost_one'] - 1  # 最高限价加价率
+
+
+def get_highest_price(x):
+    if x['height_markup_rate'] >= 0.6:
+        return (x['height_markup_rate'] + 1) * x['cost_one']
+    else:
+        return 1.6 * x['cost_one']  # 最高限价加价率大于60%取60
+
+
+#  计算预测售价
+df.loc[:, "height_sell_price2"] = df.apply(get_highest_price, axis=1)
+#  实际售价和预测售价取小
+df['pr_sell_price_one'] = df[['sell_price_one', 'height_sell_price2']].min(axis=1)
+#  预测销售额
+df['pr_sell_price'] = df['buy_num'] * df['pr_sell_price_one']
+#  销售额差异
+df['Sales_difference'] = df['pr_sell_price'] - df['sell_price']
+
+# 用’空白‘填充类目缺失
+df.fillna({'汽配龙一级销售类目':'空白'},inplace=True)
+df.fillna({'汽配龙二级销售类目':'空白'},inplace=True)
+df.fillna({'汽配龙三级销售类目':'空白'},inplace=True)
+df.fillna({'汽配龙四级销售类目':'空白'},inplace=True)
+
+
+# 单个文件写入单个excel
+# df.to_excel('E:/Desktop/门店24年6月品牌件销售价格及成本/output.xlsx',index=False, sheet_name='源数据')
+res = df.groupby(['汽配龙一级销售类目', '汽配龙二级销售类目', '汽配龙三级销售类目', '汽配龙四级销售类目'], as_index=False).sum()
+# 单个文件写入单个excel
+# res.to_excel('E:/Desktop/门店24年6月品牌件销售价格及成本/output.xlsx',index=False, sheet_name='类目')
+
+
+# 两个文件写入同一个excel，不同sheet
+with pd.ExcelWriter('E:/Desktop/门店24年6月品牌件销售价格及成本/output.xlsx') as writer:
+    df.to_excel(writer, index=False, sheet_name='源数据')
+    res.to_excel(writer, index=False, sheet_name='类目')
